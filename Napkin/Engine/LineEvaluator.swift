@@ -7,6 +7,11 @@ struct LineEvaluator {
         case value(Value)
         case binary(BinaryOperator)
         case open, close
+        /// `k`, `million`: multiplies the number before it.
+        case scale(Double)
+        /// `in`, `into`, `as`, `to`: changes how the value before it is shown.
+        case convert
+        case style(NumberStyle)
     }
 
     /// Words and groups of words with a fixed meaning. A longer phrase wins over a shorter one.
@@ -22,6 +27,15 @@ struct LineEvaluator {
         "&": .binary(.bitwiseAnd), "|": .binary(.bitwiseOr), "xor": .binary(.bitwiseXor),
         "<<": .binary(.shiftLeft), ">>": .binary(.shiftRight),
         "(": .open, ")": .close,
+        "in": .convert, "into": .convert, "as": .convert, "to": .convert,
+    ]
+    /// One-letter scales are case-sensitive: `m` is the metre and `K` is the kelvin.
+    private static let scales: [String: Double] = [
+        "k": 1e3, "M": 1e6, "thousand": 1e3, "million": 1e6, "billion": 1e9, "trillion": 1e12,
+    ]
+    private static let styles: [String: NumberStyle] = [
+        "hex": .hexadecimal, "hexadecimal": .hexadecimal, "bin": .binary, "binary": .binary,
+        "oct": .octal, "octal": .octal, "sci": .scientific, "scientific": .scientific,
     ]
     private static let longestPhrase = 4
 
@@ -45,9 +59,28 @@ struct LineEvaluator {
                 items.append(keyword)
                 index += length
             } else {
-                if case .number(let number) = tokens[index].kind { items.append(.value(.number(number))) }
+                if let item = meaning(of: tokens[index], after: index > 0 ? tokens[index - 1] : nil) {
+                    items.append(item)
+                }
                 index += 1
             }
+        }
+    }
+
+    /// The meaning of a token that is not a keyword, or nil if it has none.
+    private func meaning(of token: Token, after previous: Token?) -> Item? {
+        switch token.kind {
+        case .number(let number):
+            return .value(.number(number))
+        case .word(let word):
+            if case .number = previous?.kind, let scale = Self.scales[word] ?? Self.scales[word.lowercased()],
+               word.count > 1 || Self.scales[word] != nil {
+                return .scale(scale)
+            }
+            if items.last == .convert, let style = Self.styles[word.lowercased()] { return .style(style) }
+            return nil
+        default:
+            return nil
         }
     }
 
@@ -63,7 +96,7 @@ struct LineEvaluator {
     mutating func evaluate() -> Value? {
         // An operator with nothing before it means nothing, but `-` and `+` can be signs.
         while case .binary(let operation) = peek, operation != .subtract, operation != .add { position += 1 }
-        guard let value = parseBinary(minimumPrecedence: 0), !failed else { return nil }
+        guard let value = parseConversion(), !failed else { return nil }
         // More values after the end of the calculation: the line is not clear, so it has no result.
         switch peek {
         case .value, .open: return nil
@@ -78,6 +111,18 @@ struct LineEvaluator {
     private mutating func fail() -> Value? {
         failed = true
         return nil
+    }
+
+    /// `255 in hex`.
+    private mutating func parseConversion() -> Value? {
+        guard var value = parseBinary(minimumPrecedence: 0) else { return nil }
+        while peek == .convert {
+            guard position + 1 < items.count, case .style(let style) = items[position + 1] else { break }
+            position += 2
+            guard case .number(let number, _) = value else { return fail() }
+            value = .number(number, style)
+        }
+        return value
     }
 
     private mutating func parseBinary(minimumPrecedence: Int) -> Value? {
@@ -121,7 +166,7 @@ struct LineEvaluator {
     }
 
     private mutating func parsePower() -> Value? {
-        guard let base = parsePrimary() else { return nil }
+        guard let base = parsePostfix() else { return nil }
         guard peek == .binary(.power) else { return base }
         let start = position
         position += 1
@@ -132,6 +177,16 @@ struct LineEvaluator {
         return base.applying(.power, exponent) ?? fail()
     }
 
+    private mutating func parsePostfix() -> Value? {
+        guard var value = parsePrimary() else { return nil }
+        while case .scale(let scale) = peek {
+            position += 1
+            guard let scaled = value.applying(.multiply, .number(scale)) else { return fail() }
+            value = scaled
+        }
+        return value
+    }
+
     private mutating func parsePrimary() -> Value? {
         switch peek {
         case .value(let value):
@@ -139,7 +194,7 @@ struct LineEvaluator {
             return value
         case .open:
             position += 1
-            guard let value = parseBinary(minimumPrecedence: 0) else { return nil }
+            guard let value = parseConversion() else { return nil }
             if peek == .close { position += 1 }
             return value
         default:
