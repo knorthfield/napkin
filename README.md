@@ -38,7 +38,13 @@ Napkin calculates on your Mac. The only network request gets the exchange rates 
 Needs a Mac with Apple Silicon and macOS 26 or later. Napkin supports the current macOS and the
 version before it.
 
-There is no release yet. Build it from the source.
+With [Homebrew](https://brew.sh):
+
+```sh
+brew install --cask knorthfield/tap/napkin
+```
+
+Or download `Napkin.zip` from the [latest release](https://github.com/knorthfield/napkin/releases/latest).
 
 ## Build
 
