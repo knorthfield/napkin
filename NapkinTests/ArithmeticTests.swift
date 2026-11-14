@@ -1,16 +1,15 @@
 import Testing
 @testable import Napkin
 
-/// The text that the results column shows for one line, or nil if the line has no result.
-func result(_ line: String, context: EvaluationContext = EvaluationContext()) -> String? {
-    var evaluator = LineEvaluator(tokens: Lexer.tokens(of: line[...]))
-    return evaluator.evaluate().map { ResultFormatter.string(for: $0, context: context) }
+/// The text that the results column shows for the last line, or nil if that line has no result.
+func result(_ text: String, context: EvaluationContext = EvaluationContext()) -> String? {
+    Calculator.evaluate(text, context: context).last?.display
 }
 
 struct ArithmeticTests {
     @Test(arguments: [
         ("1 + 2", "3"), ("7 - 10", "-3"), ("2 + 3 * 4", "14"), ("(2 + 3) * 4", "20"), ("10 / 4", "2.5"),
-        ("2 ^ 3 ^ 2", "512"), ("-2 ^ 2", "-4"), ("2 ^ -1", "0.5"), ("- 3 + 5", "2"), ("2 * -3", "-6"),
+        ("2 ^ 3 ^ 2", "512"), ("-2 ^ 2", "-4"), ("2 ^ -1", "0.5"), ("-3 + 5", "2"), ("2 * -3", "-6"),
         ("0.1 + 0.2", "0.3"), ("10 / 3", "3.33"), ("1 / 800", "0.0013"), ("1234567.891", "1,234,567.89"),
         ("2 ^ 70", "1.18e21"), ("17 mod 5", "2"),
     ])

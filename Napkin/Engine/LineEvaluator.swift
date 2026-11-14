@@ -39,12 +39,25 @@ struct LineEvaluator {
     ]
     private static let longestPhrase = 4
 
+    /// Words that a note cannot use as the name of a variable.
+    static func isReserved(_ name: String) -> Bool {
+        let word = name.lowercased()
+        return word != "x" && keywords[word] != nil || constants[word] != nil || lineReferences.contains(word)
+    }
+
+    private static let constants: [String: Double] = ["pi": .pi, "π": .pi, "e": M_E]
+    private static let lineReferences: Set<String> = ["prev", "sum", "total", "average", "avg"]
+
+    private let state: DocumentState
+    /// True when the line uses `sum`, `total`, `average` or `avg`.
+    private(set) var usesBlock = false
     private var items: [Item] = []
     private var position = 0
     /// True when the line has a meaning but no value, for example a division of text by a number.
     private var failed = false
 
-    init(tokens: [Token]) {
+    init(tokens: [Token], state: DocumentState) {
+        self.state = state
         let texts = tokens.map(Self.text)
         var index = 0
         while index < tokens.count {
@@ -55,6 +68,8 @@ struct LineEvaluator {
                 if keyword != nil { break }
                 length -= 1
             }
+            // A note can use `x` as a variable. Then it is not the multiplication sign.
+            if case .word(let word) = tokens[index].kind, state.variables[word] != nil { keyword = nil }
             if let keyword {
                 items.append(keyword)
                 index += length
@@ -68,11 +83,14 @@ struct LineEvaluator {
     }
 
     /// The meaning of a token that is not a keyword, or nil if it has none.
-    private func meaning(of token: Token, after previous: Token?) -> Item? {
+    private mutating func meaning(of token: Token, after previous: Token?) -> Item? {
         switch token.kind {
         case .number(let number):
             return .value(.number(number))
         case .word(let word):
+            if let variable = state.variables[word] { return .value(variable) }
+            if let constant = Self.constants[word.lowercased()] { return .value(.number(constant)) }
+            if Self.lineReferences.contains(word.lowercased()) { return lineReference(word.lowercased()) }
             if case .number = previous?.kind, let scale = Self.scales[word] ?? Self.scales[word.lowercased()],
                word.count > 1 || Self.scales[word] != nil {
                 return .scale(scale)
@@ -82,6 +100,22 @@ struct LineEvaluator {
         default:
             return nil
         }
+    }
+
+    /// `prev` is the result before this line. The others use the lines above, up to the first empty line.
+    private mutating func lineReference(_ word: String) -> Item? {
+        if word == "prev" { return state.previous.map(Item.value) }
+        usesBlock = true
+        var sum: Value?
+        var count = 0.0
+        for value in state.block {
+            guard let next = sum.map({ $0.applying(.add, value) }) ?? value else { continue }
+            sum = next
+            count += 1
+        }
+        guard let sum else { return nil }
+        let isAverage = word == "average" || word == "avg"
+        return (isAverage ? sum.applying(.divide, .number(count)) : sum).map(Item.value)
     }
 
     /// The text of a token as the keyword table has it.
