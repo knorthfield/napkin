@@ -81,13 +81,26 @@ final class EditorView: NSView, NSTextViewDelegate {
         onTextChange(textView.string)
     }
 
-    /// The result of the line with the caret, for the Copy Result command.
+    /// The result of the line with the caret.
     var resultAtCaret: String? {
+        caretLine.flatMap { results.indices.contains($0) ? results[$0].display : nil }
+    }
+
+    private var caretLine: Int? {
         let text = textView.string as NSString
         let caret = min(textView.selectedRange().location, text.length)
-        let lineStart = text.lineRange(for: NSRange(location: caret, length: 0)).location
-        guard let line = lineNumbers[lineStart], results.indices.contains(line) else { return nil }
-        return results[line].display
+        return lineNumbers[text.lineRange(for: NSRange(location: caret, length: 0)).location]
+    }
+
+    /// The Copy Result command: copies the result of the line with the caret.
+    @objc func copyResult(_ sender: Any?) {
+        guard let result = resultAtCaret else { return NSSound.beep() }
+        if let row = resultsColumn.rows.first(where: { $0.line == caretLine }) {
+            resultsColumn.copy(row)
+        } else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(result, forType: .string)
+        }
     }
 
     @objc private func placeResults() {
@@ -108,7 +121,7 @@ final class EditorView: NSView, NSTextViewDelegate {
                let display = self.results[line].display, let firstRow = fragment.textLineFragments.first {
                 let rowTop = top + firstRow.typographicBounds.minY
                 let y = self.resultsColumn.convert(NSPoint(x: 0, y: rowTop), from: self.textView).y
-                rows.append(ResultsColumnView.Row(y: y, height: firstRow.typographicBounds.height, text: display))
+                rows.append(ResultsColumnView.Row(y: y, height: firstRow.typographicBounds.height, text: display, line: line))
             }
             return true
         }

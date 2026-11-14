@@ -7,6 +7,8 @@ final class ResultsColumnView: NSView {
         var y: CGFloat
         var height: CGFloat
         var text: String
+        /// The number of the line in the note, from 0.
+        var line: Int
     }
 
     var rows: [Row] = [] {
@@ -35,7 +37,11 @@ final class ResultsColumnView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        guard let row = rows.first(where: { ($0.y...$0.y + $0.height).contains(point.y) }) else { return }
+        if let row = rows.first(where: { ($0.y...$0.y + $0.height).contains(point.y) }) { copy(row) }
+    }
+
+    /// Puts the result on the clipboard and shows "Copied" in its place for a moment.
+    func copy(_ row: Row) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(row.text, forType: .string)
         copiedRowY = row.y

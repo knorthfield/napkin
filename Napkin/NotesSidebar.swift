@@ -18,7 +18,6 @@ struct NotesSidebar: View {
         .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 320)
         .toolbar {
             Button("New Note", systemImage: "square.and.pencil") { store.addNote() }
-                .keyboardShortcut("n")
                 .help("New Note")
         }
     }

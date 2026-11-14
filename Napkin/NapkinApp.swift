@@ -6,28 +6,42 @@ struct NapkinApp: App {
 
     var body: some Scene {
         Settings {
-            EmptyView()
+            SettingsView(rates: appDelegate.rates)
+        }
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Note") { appDelegate.store?.addNote() }
+                    .keyboardShortcut("n")
+            }
+            CommandGroup(after: .pasteboard) {
+                // The editor with the caret gets the command.
+                Button("Copy Result") { NSApp.sendAction(#selector(EditorView.copyResult(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+            }
         }
     }
 }
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var store: NoteStore?
+    let rates = CurrencyRates()
+    private(set) var store: NoteStore?
     private var window: MainWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The unit tests run inside the app: do not show the window.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         let store = NoteStore()
-        let window = MainWindow(store: store)
+        let window = MainWindow(store: store, rates: rates)
         window.show()
         self.store = store
         self.window = window
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        store?.load()
+        guard let store else { return }
+        store.load()
+        Task { await rates.refreshIfOld() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

@@ -9,7 +9,7 @@ final class MainWindow {
 
     private let window: NSWindow
 
-    init(store: NoteStore) {
+    init(store: NoteStore, rates: CurrencyRates) {
         window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Self.firstSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -19,7 +19,7 @@ final class MainWindow {
         window.title = "Napkin"
         window.isReleasedWhenClosed = false
         window.contentMinSize = NSSize(width: 480, height: 320)
-        let host = NSHostingController(rootView: ContentView(store: store))
+        let host = NSHostingController(rootView: ContentView(store: store, rates: rates))
         // Lets the SwiftUI toolbar items go into the window's toolbar.
         host.sceneBridgingOptions = [.toolbars]
         // Never `.preferredContentSize`: on macOS 26 it can recurse and crash.
