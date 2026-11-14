@@ -1,0 +1,54 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "srgb:0.98000,0.52000,0.26000,1.00000",
+      "srgb:0.82000,0.20000,0.24000,1.00000"
+    ]
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "results.svg",
+          "name" : "results"
+        },
+        {
+          "glass" : false,
+          "image-name" : "lines.svg",
+          "name" : "lines"
+        }
+      ],
+      "name" : "content",
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    },
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "image-name" : "napkin.svg",
+          "name" : "napkin"
+        }
+      ],
+      "name" : "napkin",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}
