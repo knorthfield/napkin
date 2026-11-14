@@ -6,4 +6,6 @@ enum NumberStyle: Equatable, Sendable {
 /// The result of a line, or of a part of a line.
 enum Value: Equatable, Sendable {
     case number(Double, NumberStyle = .decimal)
+    /// `5%` is `.percent(5)`.
+    case percent(Double)
 }

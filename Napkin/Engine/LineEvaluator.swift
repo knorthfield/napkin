@@ -12,6 +12,9 @@ struct LineEvaluator {
         /// `in`, `into`, `as`, `to`: changes how the value before it is shown.
         case convert
         case style(NumberStyle)
+        case percentSign
+        case percentPhrase(PercentPhrase)
+        case function(String)
     }
 
     /// Words and groups of words with a fixed meaning. A longer phrase wins over a shorter one.
@@ -27,6 +30,12 @@ struct LineEvaluator {
         "&": .binary(.bitwiseAnd), "|": .binary(.bitwiseOr), "xor": .binary(.bitwiseXor),
         "<<": .binary(.shiftLeft), ">>": .binary(.shiftRight),
         "(": .open, ")": .close,
+        "%": .percentSign,
+        "of": .percentPhrase(.of), "on": .percentPhrase(.on), "off": .percentPhrase(.off),
+        "as a % of": .percentPhrase(.asPercentOf), "as a % on": .percentPhrase(.asPercentOn),
+        "as a % off": .percentPhrase(.asPercentOff),
+        "of what is": .percentPhrase(.ofWhatIs), "on what is": .percentPhrase(.onWhatIs),
+        "off what is": .percentPhrase(.offWhatIs),
         "in": .convert, "into": .convert, "as": .convert, "to": .convert,
     ]
     /// One-letter scales are case-sensitive: `m` is the metre and `K` is the kelvin.
@@ -43,6 +52,7 @@ struct LineEvaluator {
     static func isReserved(_ name: String) -> Bool {
         let word = name.lowercased()
         return word != "x" && keywords[word] != nil || constants[word] != nil || lineReferences.contains(word)
+            || Functions.names.contains(word)
     }
 
     private static let constants: [String: Double] = ["pi": .pi, "π": .pi, "e": M_E]
@@ -91,6 +101,7 @@ struct LineEvaluator {
             if let variable = state.variables[word] { return .value(variable) }
             if let constant = Self.constants[word.lowercased()] { return .value(.number(constant)) }
             if Self.lineReferences.contains(word.lowercased()) { return lineReference(word.lowercased()) }
+            if Functions.names.contains(word.lowercased()) { return .function(word.lowercased()) }
             if case .number = previous?.kind, let scale = Self.scales[word] ?? Self.scales[word.lowercased()],
                word.count > 1 || Self.scales[word] != nil {
                 return .scale(scale)
@@ -133,7 +144,7 @@ struct LineEvaluator {
         guard let value = parseConversion(), !failed else { return nil }
         // More values after the end of the calculation: the line is not clear, so it has no result.
         switch peek {
-        case .value, .open: return nil
+        case .value, .open, .function: return nil
         default: break
         }
         if case .number(let number, _) = value, !number.isFinite { return nil }
@@ -149,7 +160,7 @@ struct LineEvaluator {
 
     /// `255 in hex`.
     private mutating func parseConversion() -> Value? {
-        guard var value = parseBinary(minimumPrecedence: 0) else { return nil }
+        guard var value = parsePercentPhrase() else { return nil }
         while peek == .convert {
             guard position + 1 < items.count, case .style(let style) = items[position + 1] else { break }
             position += 2
@@ -157,6 +168,19 @@ struct LineEvaluator {
             value = .number(number, style)
         }
         return value
+    }
+
+    /// `20% of 10`.
+    private mutating func parsePercentPhrase() -> Value? {
+        guard let left = parseBinary(minimumPrecedence: 0) else { return nil }
+        guard case .percentPhrase(let phrase) = peek else { return left }
+        let start = position
+        position += 1
+        guard let right = parseBinary(minimumPrecedence: 0) else {
+            position = start
+            return left
+        }
+        return left.applying(phrase, right) ?? fail()
     }
 
     private mutating func parseBinary(minimumPrecedence: Int) -> Value? {
@@ -213,12 +237,27 @@ struct LineEvaluator {
 
     private mutating func parsePostfix() -> Value? {
         guard var value = parsePrimary() else { return nil }
-        while case .scale(let scale) = peek {
+        while true {
+            switch peek {
+            case .scale(let scale):
+                guard let scaled = value.applying(.multiply, .number(scale)) else { return fail() }
+                value = scaled
+            case .percentSign:
+                guard case .number(let number, _) = value else { return fail() }
+                value = .percent(number)
+            default:
+                return value
+            }
             position += 1
-            guard let scaled = value.applying(.multiply, .number(scale)) else { return fail() }
-            value = scaled
         }
-        return value
+    }
+
+    /// `sqrt 16 + 2` is 6: without a bracket, a function uses only the value directly after it.
+    private mutating func parseFunctionArgument() -> Value? {
+        guard peek == .binary(.subtract) else { return parsePostfix() }
+        position += 1
+        guard let value = parsePostfix() else { return nil }
+        return value.negated ?? fail()
     }
 
     private mutating func parsePrimary() -> Value? {
@@ -231,6 +270,16 @@ struct LineEvaluator {
             guard let value = parseConversion() else { return nil }
             if peek == .close { position += 1 }
             return value
+        case .function(let name):
+            position += 1
+            guard let first = parseFunctionArgument() else { return nil }
+            var arguments = [first]
+            // `root 3 (8)` and `log 2 (8)`: the number before the bracket is the degree or the base.
+            if name == "root" || name == "log", peek == .open {
+                guard let second = parsePrimary() else { return nil }
+                arguments.append(second)
+            }
+            return Functions.apply(name, to: arguments) ?? fail()
         default:
             return nil
         }

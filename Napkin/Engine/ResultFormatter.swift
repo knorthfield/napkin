@@ -12,11 +12,12 @@ enum ResultFormatter {
             case .binary: integerString(number, radix: 2, prefix: "0b")
             case .octal: integerString(number, radix: 8, prefix: "0o")
             }
+        case .percent(let percent):
+            decimalString(percent, decimalPlaces: context.decimalPlaces) + "%"
         }
     }
 
     static func decimalString(_ number: Double, decimalPlaces: Int) -> String {
-        // 12 significant digits hide binary floating-point noise: 0.1 + 0.2 shows 0.3.
         let magnitude = abs(number)
         guard magnitude > 0 else { return "0" }
         if magnitude >= 1e15 || magnitude < 1e-9 {
@@ -24,6 +25,7 @@ enum ResultFormatter {
         }
         // A number less than 1 keeps its decimal places after the zeros: 0.001234 shows 0.0012.
         let leadingZeros = magnitude < 1 ? Int((-log10(magnitude)).rounded(.up)) - 1 : 0
+        // No more than 12 decimal places: they hide binary floating-point noise.
         let fractionDigits = min(decimalPlaces + leadingZeros, 12)
         let text = number.formatted(
             .number
