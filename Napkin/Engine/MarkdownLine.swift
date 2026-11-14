@@ -6,13 +6,18 @@ enum MarkdownLine {
         return text.hasPrefix("```") || text.hasPrefix("~~~")
     }
 
+    /// 1 to 6 for a heading line (`#` to `######`), or nil.
+    static func headingLevel(of line: Substring) -> Int? {
+        let text = line.drop(while: \.isWhitespace)
+        let level = text.prefix(while: { $0 == "#" }).count
+        return (1...6).contains(level) && text.dropFirst(level).first?.isWhitespace ?? true ? level : nil
+    }
+
     /// The line without its list marker and label, or nil if the line is only text:
     /// a heading, a quote, a table row, a rule or a `//` comment.
     static func expression(in line: Substring) -> Substring? {
         var text = line.drop(while: \.isWhitespace)
-        if text.hasPrefix("//") || text.hasPrefix(">") || text.hasPrefix("|") { return nil }
-        let heading = text.prefix(while: { $0 == "#" })
-        if (1...6).contains(heading.count), text.dropFirst(heading.count).first?.isWhitespace ?? true { return nil }
+        if text.hasPrefix("//") || text.hasPrefix(">") || text.hasPrefix("|") || headingLevel(of: line) != nil { return nil }
         if let first = text.first, "-*_".contains(first),
            text.allSatisfy({ $0 == first || $0.isWhitespace }), text.filter({ $0 == first }).count >= 3 {
             return nil

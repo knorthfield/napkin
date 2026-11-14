@@ -67,6 +67,7 @@ final class EditorView: NSView, NSTextViewDelegate {
             textView.undoManager?.removeAllActions()
         }
         self.results = results
+        SyntaxHighlighter.apply(results, of: text, to: textView)
         lineNumbers = [:]
         var offset = 0
         for (number, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {

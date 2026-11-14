@@ -65,6 +65,8 @@ struct LineEvaluator {
     private let context: EvaluationContext
     /// True when the line uses `sum`, `total`, `average` or `avg`.
     private(set) var usesBlock = false
+    /// The meaning of each token for syntax colours, or nil for a token that means nothing.
+    private(set) var roles: [TokenRole?]
     private var items: [Item] = []
     private var position = 0
     /// True when the line has a meaning but no value, for example a division of text by a number.
@@ -73,10 +75,18 @@ struct LineEvaluator {
     init(tokens: [Token], state: DocumentState, context: EvaluationContext) {
         self.state = state
         self.context = context
+        roles = tokens.map { token in
+            switch token.kind {
+            case .quoted: .comment
+            case .mark: .mark
+            default: nil
+            }
+        }
         let texts = tokens.map(Self.text)
         var index = 0
         while index < tokens.count {
             if let (time, length) = clockTime(at: index, in: tokens) {
+                roles.replaceSubrange(index..<index + length, with: repeatElement(.number, count: length))
                 items.append(.value(time))
                 index += length
                 continue
@@ -90,21 +100,34 @@ struct LineEvaluator {
             }
             // A note can use `x` as a variable. Then it is not the multiplication sign.
             if case .word(let word) = tokens[index].kind, state.variables[word] != nil { keyword = nil }
+            var role: TokenRole?
             if let keyword {
                 items.append(keyword)
-                index += length
-            } else if let (unit, length) = unit(at: index, in: tokens) {
+                switch keyword {
+                case .open, .close: role = nil
+                case .unit: role = .unit
+                default: role = .keyword
+                }
+            } else if let (unit, unitLength) = unit(at: index, in: tokens) {
                 items.append(.unit(unit))
-                index += length
-            } else if let (zone, length) = zone(at: index, in: tokens) {
+                (role, length) = (.unit, unitLength)
+            } else if let (zone, zoneLength) = zone(at: index, in: tokens) {
                 items.append(.zone(zone))
-                index += length
+                (role, length) = (.unit, zoneLength)
             } else {
+                length = 1
                 if let item = meaning(of: tokens[index], after: index > 0 ? tokens[index - 1] : nil) {
                     items.append(item)
+                    switch (item, tokens[index].kind) {
+                    case (.value, .number): role = .number
+                    case (.value, .word(let word)): role = state.variables[word] != nil ? .variable : .function
+                    case (.function, _): role = .function
+                    default: role = .unit
+                    }
                 }
-                index += 1
             }
+            if let role { roles.replaceSubrange(index..<index + length, with: repeatElement(role, count: length)) }
+            index += length
         }
     }
 

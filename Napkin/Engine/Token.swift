@@ -1,3 +1,8 @@
+/// What a token means in its line, for syntax colours.
+enum TokenRole: Equatable, Sendable {
+    case number, keyword, unit, variable, function, comment, mark
+}
+
 /// One piece of a line, with its place in the line (for syntax colours).
 struct Token: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
