@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.show()
         self.store = store
         self.window = window
+        Task { await rates.refreshIfOld() }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
