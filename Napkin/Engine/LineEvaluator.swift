@@ -286,9 +286,17 @@ struct LineEvaluator {
         }
     }
 
+    private static func meansNothingAtStart(_ item: Item) -> Bool {
+        switch item {
+        case .binary(.subtract), .binary(.add): false
+        case .binary, .convert, .percentPhrase: true
+        default: false
+        }
+    }
+
     mutating func evaluate() -> Value? {
-        // An operator with nothing before it means nothing, but `-` and `+` can be signs.
-        while case .binary(let operation) = peek, operation != .subtract, operation != .add { position += 1 }
+        // An operator or `in` with nothing before it means nothing, but `-` and `+` can be signs.
+        while let item = peek, Self.meansNothingAtStart(item) { position += 1 }
         guard let value = parseConversion(), !failed else { return nil }
         // More values after the end of the calculation: the line is not clear, so it has no result.
         switch peek {

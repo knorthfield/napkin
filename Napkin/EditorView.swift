@@ -52,6 +52,15 @@ final class EditorView: NSView, NSTextViewDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    /// A new editor takes the keyboard, unless the user is in a different view such as the list of notes.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window, window.firstResponder === window else { return }
+            window.makeFirstResponder(textView)
+        }
+    }
+
     override func layout() {
         super.layout()
         let resultsWidth = min(max(bounds.width * 0.3, 120), 320)

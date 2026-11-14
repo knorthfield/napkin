@@ -39,7 +39,8 @@ struct ArithmeticTests {
         #expect(result(line) == expected)
     }
 
-    @Test(arguments: [("2 + 3 apples", "5"), ("eggs 12 times 2", "24"), ("5 +", "5"), ("(2 + 3", "5")])
+    @Test(arguments: [("2 + 3 apples", "5"), ("eggs 12 times 2", "24"), ("5 +", "5"), ("a line of words to say that 2 + 2 is here", "4"),
+        ("in total 5", "5"), ("(2 + 3", "5")])
     func wordsWithNoMeaningAreIgnored(line: String, expected: String) {
         #expect(result(line) == expected)
     }
