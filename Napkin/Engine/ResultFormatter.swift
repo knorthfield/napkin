@@ -14,6 +14,10 @@ enum ResultFormatter {
             }
         case .percent(let percent):
             decimalString(percent, decimalPlaces: context.decimalPlaces) + "%"
+        case .quantity(let number, let unit):
+            decimalString(number, decimalPlaces: context.decimalPlaces)
+                + (unit.symbol == "°" ? "" : " ")
+                + (abs(number) == 1 ? unit.symbol : unit.plural ?? unit.symbol)
         }
     }
 

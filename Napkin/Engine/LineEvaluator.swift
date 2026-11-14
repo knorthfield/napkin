@@ -15,6 +15,7 @@ struct LineEvaluator {
         case percentSign
         case percentPhrase(PercentPhrase)
         case function(String)
+        case unit(UnitOfMeasure)
     }
 
     /// Words and groups of words with a fixed meaning. A longer phrase wins over a shorter one.
@@ -30,7 +31,7 @@ struct LineEvaluator {
         "&": .binary(.bitwiseAnd), "|": .binary(.bitwiseOr), "xor": .binary(.bitwiseXor),
         "<<": .binary(.shiftLeft), ">>": .binary(.shiftRight),
         "(": .open, ")": .close,
-        "%": .percentSign,
+        "%": .percentSign, "°": .unit(UnitTable.degree),
         "of": .percentPhrase(.of), "on": .percentPhrase(.on), "off": .percentPhrase(.off),
         "as a % of": .percentPhrase(.asPercentOf), "as a % on": .percentPhrase(.asPercentOn),
         "as a % off": .percentPhrase(.asPercentOff),
@@ -83,6 +84,9 @@ struct LineEvaluator {
             if let keyword {
                 items.append(keyword)
                 index += length
+            } else if let (unit, length) = unit(at: index, in: tokens) {
+                items.append(.unit(unit))
+                index += length
             } else {
                 if let item = meaning(of: tokens[index], after: index > 0 ? tokens[index - 1] : nil) {
                     items.append(item)
@@ -92,13 +96,49 @@ struct LineEvaluator {
         }
     }
 
+    /// A unit is one to three words: `km`, `sq ft`, `square nautical miles`. A word is a unit only after
+    /// a value or after `in`, `into`, `as` or `to`, so that `are` and `hand` in a sentence mean nothing.
+    private func unit(at index: Int, in tokens: [Token]) -> (UnitOfMeasure, Int)? {
+        switch items.last {
+        case .value, .scale, .close, .convert: break
+        default: return nil
+        }
+        var words: [String] = []
+        for token in tokens[index...].prefix(3) {
+            guard case .word(let word) = token.kind else { break }
+            words.append(word)
+        }
+        // A variable wins over a unit, but `em` is always the unit: the variable `em` sets its size.
+        guard let first = words.first, first == "em" || state.variables[first] == nil else { return nil }
+        for length in stride(from: words.count, through: 1, by: -1) {
+            let name = words[..<length].joined(separator: " ")
+            if let unit = screenUnit(named: name) ?? UnitTable.unit(named: name) { return (unit, length) }
+        }
+        return nil
+    }
+
+    /// `px` and `em` depend on the variables `ppi` (pixels in one inch, 96) and `em` (16 px).
+    private func screenUnit(named name: String) -> UnitOfMeasure? {
+        guard name == "px" || name == "em" else { return nil }
+        var pixelsPerInch = 96.0
+        if case .number(let number, _) = state.variables["ppi"] { pixelsPerInch = number }
+        let pixel = UnitTable.inch.toBase / pixelsPerInch
+        if name == "px" { return UnitOfMeasure(symbol: "px", dimension: .length, toBase: pixel) }
+        let size: Double = switch state.variables["em"] {
+        case .number(let number, _): number * pixel
+        case .quantity(let number, let unit) where unit.dimension == .length: number * unit.toBase
+        default: 16 * pixel
+        }
+        return UnitOfMeasure(symbol: "em", dimension: .length, toBase: size)
+    }
+
     /// The meaning of a token that is not a keyword, or nil if it has none.
     private mutating func meaning(of token: Token, after previous: Token?) -> Item? {
         switch token.kind {
         case .number(let number):
             return .value(.number(number))
         case .word(let word):
-            if let variable = state.variables[word] { return .value(variable) }
+            if let variable = state.variables[word], word != "em" { return .value(variable) }
             if let constant = Self.constants[word.lowercased()] { return .value(.number(constant)) }
             if Self.lineReferences.contains(word.lowercased()) { return lineReference(word.lowercased()) }
             if Functions.names.contains(word.lowercased()) { return .function(word.lowercased()) }
@@ -158,14 +198,21 @@ struct LineEvaluator {
         return nil
     }
 
-    /// `255 in hex`.
+    /// `255 in hex`, `5 km in miles`.
     private mutating func parseConversion() -> Value? {
         guard var value = parsePercentPhrase() else { return nil }
         while peek == .convert {
-            guard position + 1 < items.count, case .style(let style) = items[position + 1] else { break }
+            switch position + 1 < items.count ? items[position + 1] : nil {
+            case .style(let style):
+                guard case .number(let number, _) = value else { return fail() }
+                value = .number(number, style)
+            case .unit(let unit):
+                guard let converted = value.converted(to: unit) else { return fail() }
+                value = converted
+            default:
+                return value
+            }
             position += 2
-            guard case .number(let number, _) = value else { return fail() }
-            value = .number(number, style)
         }
         return value
     }
@@ -200,14 +247,26 @@ struct LineEvaluator {
     }
 
     /// `6 (3)`: a bracket directly after a value multiplies.
+    /// `1 meter 20 cm`: a measurement directly after a measurement of the same type adds.
     private mutating func parseImplicit() -> Value? {
         guard var left = parseUnary() else { return nil }
-        while peek == .open {
-            guard let right = parsePower() else { return nil }
-            guard let result = left.applying(.multiply, right) else { return fail() }
-            left = result
+        while true {
+            if peek == .open {
+                guard let right = parsePower() else { return nil }
+                guard let result = left.applying(.multiply, right) else { return fail() }
+                left = result
+            } else if case .quantity(_, let unit) = left, case .value(.number) = peek {
+                let start = position
+                guard let right = parsePower(), case .quantity(_, let rightUnit) = right,
+                      rightUnit.dimension == unit.dimension, let sum = left.applying(.add, right) else {
+                    position = start
+                    return left
+                }
+                left = sum
+            } else {
+                return left
+            }
         }
-        return left
     }
 
     private mutating func parseUnary() -> Value? {
@@ -245,6 +304,14 @@ struct LineEvaluator {
             case .percentSign:
                 guard case .number(let number, _) = value else { return fail() }
                 value = .percent(number)
+            case .unit(let unit):
+                // `$30 CAD`: a currency after a currency names the currency. It does not convert.
+                switch value {
+                case .number(let number, _): value = .quantity(number, unit)
+                case .quantity(let number, let old) where old.dimension == .currency && unit.dimension == .currency:
+                    value = .quantity(number, unit)
+                default: return value
+                }
             default:
                 return value
             }

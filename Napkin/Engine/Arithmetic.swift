@@ -27,6 +27,7 @@ extension Value {
         switch self {
         case .number(let number, let style): .number(-number, style)
         case .percent(let percent): .percent(-percent)
+        case .quantity(let number, let unit): .quantity(-number, unit)
         }
     }
 
@@ -45,6 +46,27 @@ extension Value {
         case (.percent(let left), .number(let right, _)):
             guard operation == .multiply || operation == .divide else { return nil }
             return .percent(Self.calculate(operation, left, right)!)
+        case (.quantity(_, let leftUnit), .quantity(let right, let unit)):
+            // The result has the unit on the right: 1 km + 5 m is 1005 m.
+            guard case .quantity(let left, _) = converted(to: unit) else { return nil }
+            switch operation {
+            case .add, .subtract, .modulo: return .quantity(Self.calculate(operation, left, right)!, unit)
+            case .divide: return leftUnit.dimension == .temperature ? nil : .number(left / right)
+            default: return nil
+            }
+        case (.quantity(let left, let unit), .number(let right, _)):
+            switch operation {
+            case .add, .subtract, .multiply, .divide, .modulo:
+                return .quantity(Self.calculate(operation, left, right)!, unit)
+            default: return nil
+            }
+        case (.number(let left, _), .quantity(let right, let unit)):
+            switch operation {
+            case .add, .subtract, .multiply: return .quantity(Self.calculate(operation, left, right)!, unit)
+            default: return nil
+            }
+        case (.percent, .quantity):
+            return nil
         case (_, .percent(let percent)):
             // 10 + 40% is 14. 10 - 40% is 6. 10 * 40% is 4. 10 / 40% is 25.
             switch operation {
