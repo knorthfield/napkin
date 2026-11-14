@@ -60,6 +60,7 @@ struct LineEvaluator {
     private static let lineReferences: Set<String> = ["prev", "sum", "total", "average", "avg"]
 
     private let state: DocumentState
+    private let context: EvaluationContext
     /// True when the line uses `sum`, `total`, `average` or `avg`.
     private(set) var usesBlock = false
     private var items: [Item] = []
@@ -67,8 +68,9 @@ struct LineEvaluator {
     /// True when the line has a meaning but no value, for example a division of text by a number.
     private var failed = false
 
-    init(tokens: [Token], state: DocumentState) {
+    init(tokens: [Token], state: DocumentState, context: EvaluationContext) {
         self.state = state
+        self.context = context
         let texts = tokens.map(Self.text)
         var index = 0
         while index < tokens.count {
@@ -99,9 +101,18 @@ struct LineEvaluator {
     /// A unit is one to three words: `km`, `sq ft`, `square nautical miles`. A word is a unit only after
     /// a value or after `in`, `into`, `as` or `to`, so that `are` and `hand` in a sentence mean nothing.
     private func unit(at index: Int, in tokens: [Token]) -> (UnitOfMeasure, Int)? {
+        if case .currencySymbol(let symbol) = tokens[index].kind {
+            return CurrencyTable.currency(named: symbol, rates: context.rates).map { ($0, 1) }
+        }
         switch items.last {
-        case .value, .scale, .close, .convert: break
-        default: return nil
+        case .value, .scale, .close, .convert:
+            break
+        default:
+            // `EUR 30`: a currency code can be before its number.
+            guard case .word(let word) = tokens[index].kind, word == word.uppercased(), index + 1 < tokens.count,
+                  case .number = tokens[index + 1].kind, state.variables[word] == nil,
+                  let currency = CurrencyTable.currency(named: word, rates: context.rates) else { return nil }
+            return (currency, 1)
         }
         var words: [String] = []
         for token in tokens[index...].prefix(3) {
@@ -112,7 +123,10 @@ struct LineEvaluator {
         guard let first = words.first, first == "em" || state.variables[first] == nil else { return nil }
         for length in stride(from: words.count, through: 1, by: -1) {
             let name = words[..<length].joined(separator: " ")
-            if let unit = screenUnit(named: name) ?? UnitTable.unit(named: name) { return (unit, length) }
+            if let unit = screenUnit(named: name) ?? UnitTable.unit(named: name)
+                ?? CurrencyTable.currency(named: name, rates: context.rates) {
+                return (unit, length)
+            }
         }
         return nil
     }
@@ -198,10 +212,16 @@ struct LineEvaluator {
         return nil
     }
 
-    /// `255 in hex`, `5 km in miles`.
+    /// `255 in hex`, `5 km in miles`. A calculation can continue after it: `$20 in EUR - 5%`.
     private mutating func parseConversion() -> Value? {
         guard var value = parsePercentPhrase() else { return nil }
-        while peek == .convert {
+        while true {
+            if case .binary = peek {
+                guard let continued = parseBinary(minimumPrecedence: 0, startingWith: value) else { return nil }
+                if continued == value { return value }
+                value = continued
+            }
+            guard peek == .convert else { return value }
             switch position + 1 < items.count ? items[position + 1] : nil {
             case .style(let style):
                 guard case .number(let number, _) = value else { return fail() }
@@ -214,7 +234,6 @@ struct LineEvaluator {
             }
             position += 2
         }
-        return value
     }
 
     /// `20% of 10`.
@@ -230,8 +249,8 @@ struct LineEvaluator {
         return left.applying(phrase, right) ?? fail()
     }
 
-    private mutating func parseBinary(minimumPrecedence: Int) -> Value? {
-        guard var left = parseImplicit() else { return nil }
+    private mutating func parseBinary(minimumPrecedence: Int, startingWith first: Value? = nil) -> Value? {
+        guard var left = first ?? parseImplicit() else { return nil }
         while case .binary(let operation) = peek, operation != .power, operation.precedence >= minimumPrecedence {
             let start = position
             position += 1
@@ -332,6 +351,11 @@ struct LineEvaluator {
         case .value(let value):
             position += 1
             return value
+        case .unit(let unit) where unit.dimension == .currency:
+            // `$30`, `EUR 30`.
+            guard position + 1 < items.count, case .value(.number(let number, _)) = items[position + 1] else { return nil }
+            position += 2
+            return .quantity(number, unit)
         case .open:
             position += 1
             guard let value = parseConversion() else { return nil }

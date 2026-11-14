@@ -36,7 +36,7 @@ enum Calculator {
                 assignedName = name
                 tokens.removeFirst(2)
             }
-            var evaluator = LineEvaluator(tokens: tokens, state: state)
+            var evaluator = LineEvaluator(tokens: tokens, state: state, context: context)
             guard let value = evaluator.evaluate() else { return LineResult() }
             if let assignedName { state.variables[assignedName] = value }
             state.previous = value

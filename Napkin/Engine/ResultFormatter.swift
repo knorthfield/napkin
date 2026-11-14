@@ -6,16 +6,25 @@ enum ResultFormatter {
         switch value {
         case .number(let number, let style):
             switch style {
-            case .decimal: decimalString(number, decimalPlaces: context.decimalPlaces)
-            case .scientific: scientificString(number, decimalPlaces: context.decimalPlaces)
-            case .hexadecimal: integerString(number, radix: 16, prefix: "0x")
-            case .binary: integerString(number, radix: 2, prefix: "0b")
-            case .octal: integerString(number, radix: 8, prefix: "0o")
+            case .decimal: return decimalString(number, decimalPlaces: context.decimalPlaces)
+            case .scientific: return scientificString(number, decimalPlaces: context.decimalPlaces)
+            case .hexadecimal: return integerString(number, radix: 16, prefix: "0x")
+            case .binary: return integerString(number, radix: 2, prefix: "0b")
+            case .octal: return integerString(number, radix: 8, prefix: "0o")
             }
         case .percent(let percent):
-            decimalString(percent, decimalPlaces: context.decimalPlaces) + "%"
+            return decimalString(percent, decimalPlaces: context.decimalPlaces) + "%"
+        case .quantity(let number, let unit) where unit.dimension == .currency:
+            // Money always has two decimal places: $1,234.50, 1,234.50 CAD.
+            let amount = abs(number).formatted(
+                .number.precision(.fractionLength(2)).rounded(rule: .toNearestOrAwayFromZero)
+                    .locale(Locale(identifier: "en_GB"))
+            )
+            let sign = number < 0 && amount != "0.00" ? "-" : ""
+            if let symbol = CurrencyTable.symbolForCode[unit.symbol] { return sign + symbol + amount }
+            return "\(sign)\(amount) \(unit.symbol)"
         case .quantity(let number, let unit):
-            decimalString(number, decimalPlaces: context.decimalPlaces)
+            return decimalString(number, decimalPlaces: context.decimalPlaces)
                 + (unit.symbol == "°" ? "" : " ")
                 + (abs(number) == 1 ? unit.symbol : unit.plural ?? unit.symbol)
         }
