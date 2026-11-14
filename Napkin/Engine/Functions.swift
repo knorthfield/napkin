@@ -2,7 +2,7 @@ import Foundation
 
 /// The functions that a note can use, such as `sqrt 16` and `round(3.45)`.
 enum Functions {
-    static let names: Set<String> = Set(plain.keys).union(keepingKind.keys).union(["root", "log", "fact"])
+    static let names: Set<String> = Set(plain.keys).union(keepingKind.keys).union(["root", "log", "fact", "fromunix"])
 
     private static let plain: [String: @Sendable (Double) -> Double] = [
         "sqrt": sqrt, "cbrt": cbrt, "ln": log,
@@ -29,6 +29,7 @@ enum Functions {
             case .number(let number, _): return .number(function(number))
             case .percent(let percent): return .percent(function(percent))
             case .quantity(let number, let unit): return .quantity(function(number), unit)
+            case .date: return nil
             }
         }
         let numbers = arguments.compactMap { argument -> Double? in

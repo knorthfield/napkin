@@ -16,6 +16,7 @@ struct LineEvaluator {
         case percentPhrase(PercentPhrase)
         case function(String)
         case unit(UnitOfMeasure)
+        case zone(TimeZone)
     }
 
     /// Words and groups of words with a fixed meaning. A longer phrase wins over a shorter one.
@@ -53,11 +54,12 @@ struct LineEvaluator {
     static func isReserved(_ name: String) -> Bool {
         let word = name.lowercased()
         return word != "x" && keywords[word] != nil || constants[word] != nil || lineReferences.contains(word)
-            || Functions.names.contains(word)
+            || Functions.names.contains(word) || dateWords.contains(word)
     }
 
     private static let constants: [String: Double] = ["pi": .pi, "π": .pi, "e": M_E]
     private static let lineReferences: Set<String> = ["prev", "sum", "total", "average", "avg"]
+    private static let dateWords: Set<String> = ["now", "time", "today", "tomorrow", "yesterday"]
 
     private let state: DocumentState
     private let context: EvaluationContext
@@ -74,6 +76,11 @@ struct LineEvaluator {
         let texts = tokens.map(Self.text)
         var index = 0
         while index < tokens.count {
+            if let (time, length) = clockTime(at: index, in: tokens) {
+                items.append(.value(time))
+                index += length
+                continue
+            }
             var length = min(Self.longestPhrase, tokens.count - index)
             var keyword: Item?
             while length > 0 {
@@ -88,6 +95,9 @@ struct LineEvaluator {
                 index += length
             } else if let (unit, length) = unit(at: index, in: tokens) {
                 items.append(.unit(unit))
+                index += length
+            } else if let (zone, length) = zone(at: index, in: tokens) {
+                items.append(.zone(zone))
                 index += length
             } else {
                 if let item = meaning(of: tokens[index], after: index > 0 ? tokens[index - 1] : nil) {
@@ -131,6 +141,66 @@ struct LineEvaluator {
         return nil
     }
 
+    /// `2:30`, `2:30 pm` and `5 pm` are clock times of today.
+    private func clockTime(at index: Int, in tokens: [Token]) -> (Value, Int)? {
+        var half: String?
+        if index + 1 < tokens.count, case .word(let word) = tokens[index + 1].kind,
+           ["am", "pm"].contains(word.lowercased()), state.variables[word] == nil {
+            half = word.lowercased()
+        }
+        var hour: Int
+        var minute = 0
+        switch tokens[index].kind {
+        case .time(let tokenHour, let tokenMinute): (hour, minute) = (tokenHour, tokenMinute)
+        case .number(let number) where half != nil && (1...12).contains(number) && number == number.rounded(): hour = Int(number)
+        default: return nil
+        }
+        if half != nil, hour == 12 { hour = 0 }
+        if half == "pm" { hour += 12 }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = context.timeZone
+        guard hour < 24, minute < 60,
+              let date = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: context.now) else { return nil }
+        return (.date(date, context.timeZone, .time), half == nil ? 1 : 2)
+    }
+
+    /// A time zone is one to three words: `PST`, `Madrid`, `New York`, `Ho Chi Minh`. A word is a time zone
+    /// only next to a time (`2:30 pm HKT`, `New York time`) or after `in`, `into`, `as` or `to`.
+    private func zone(at index: Int, in tokens: [Token]) -> (TimeZone, Int)? {
+        var words: [String] = []
+        for token in tokens[index...].prefix(3) {
+            guard case .word(let word) = token.kind else { break }
+            words.append(word)
+        }
+        guard let first = words.first, state.variables[first] == nil else { return nil }
+        var isAfterTime = items.last == .convert
+        if case .value(.date) = items.last { isAfterTime = true }
+        for length in stride(from: words.count, through: 1, by: -1) {
+            guard let zone = TimeZoneTable.zone(named: words[..<length].joined(separator: " ")) else { continue }
+            var isBeforeTime = false
+            if index + length < tokens.count, case .word(let next) = tokens[index + length].kind {
+                isBeforeTime = next.lowercased() == "time" || next.lowercased() == "now"
+            }
+            if isAfterTime || isBeforeTime { return (zone, length) }
+        }
+        return nil
+    }
+
+    /// The moment that `now`, `time`, `today`, `tomorrow` or `yesterday` means.
+    private func date(for word: String) -> Value? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = context.timeZone
+        let today = calendar.startOfDay(for: context.now)
+        switch word {
+        case "now": return .date(context.now, context.timeZone, .dateAndTime)
+        case "time": return .date(context.now, context.timeZone, .time)
+        case "today": return .date(today, context.timeZone, .date)
+        case "tomorrow": return calendar.date(byAdding: .day, value: 1, to: today).map { .date($0, context.timeZone, .date) }
+        case "yesterday": return calendar.date(byAdding: .day, value: -1, to: today).map { .date($0, context.timeZone, .date) }
+        default: return nil
+        }
+    }
+
     /// `px` and `em` depend on the variables `ppi` (pixels in one inch, 96) and `em` (16 px).
     private func screenUnit(named name: String) -> UnitOfMeasure? {
         guard name == "px" || name == "em" else { return nil }
@@ -156,6 +226,7 @@ struct LineEvaluator {
             if let constant = Self.constants[word.lowercased()] { return .value(.number(constant)) }
             if Self.lineReferences.contains(word.lowercased()) { return lineReference(word.lowercased()) }
             if Functions.names.contains(word.lowercased()) { return .function(word.lowercased()) }
+            if let date = date(for: word.lowercased()) { return .value(date) }
             if case .number = previous?.kind, let scale = Self.scales[word] ?? Self.scales[word.lowercased()],
                word.count > 1 || Self.scales[word] != nil {
                 return .scale(scale)
@@ -229,6 +300,13 @@ struct LineEvaluator {
             case .unit(let unit):
                 guard let converted = value.converted(to: unit) else { return fail() }
                 value = converted
+            case .zone(let zone):
+                // `time in Madrid`: the same moment, on the clocks of a different place.
+                guard case .date(let date, _, let parts) = value else { return fail() }
+                value = .date(date, zone, parts)
+            case _ where value.isDate:
+                // `time in Atlantis`: do not show the local time for a place that is not known.
+                return fail()
             default:
                 return value
             }
@@ -331,6 +409,15 @@ struct LineEvaluator {
                     value = .quantity(number, unit)
                 default: return value
                 }
+            case .zone(let zone):
+                // `2:30 pm HKT`: the clock time is a time in Hong Kong.
+                guard case .date(let date, let old, let parts) = value else { return value }
+                var calendar = Calendar(identifier: .gregorian)
+                calendar.timeZone = old
+                let clock = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+                calendar.timeZone = zone
+                guard let moved = calendar.date(from: clock) else { return fail() }
+                value = .date(moved, zone, parts)
             default:
                 return value
             }
@@ -361,9 +448,18 @@ struct LineEvaluator {
             guard let value = parseConversion() else { return nil }
             if peek == .close { position += 1 }
             return value
+        case .zone(let zone):
+            // `New York time`.
+            guard position + 1 < items.count, case .value(.date(let date, _, let parts)) = items[position + 1] else { return nil }
+            position += 2
+            return .date(date, zone, parts)
         case .function(let name):
             position += 1
             guard let first = parseFunctionArgument() else { return nil }
+            if name == "fromunix" {
+                guard case .number(let seconds, _) = first else { return fail() }
+                return .date(Date(timeIntervalSince1970: seconds), context.timeZone, .dateAndTime)
+            }
             var arguments = [first]
             // `root 3 (8)` and `log 2 (8)`: the number before the bracket is the degree or the base.
             if name == "root" || name == "log", peek == .open {

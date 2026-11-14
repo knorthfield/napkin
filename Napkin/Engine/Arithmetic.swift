@@ -28,6 +28,7 @@ extension Value {
         case .number(let number, let style): .number(-number, style)
         case .percent(let percent): .percent(-percent)
         case .quantity(let number, let unit): .quantity(-number, unit)
+        case .date: nil
         }
     }
 
@@ -65,7 +66,23 @@ extension Value {
             case .add, .subtract, .multiply: return .quantity(Self.calculate(operation, left, right)!, unit)
             default: return nil
             }
-        case (.percent, .quantity):
+        case (.date(let date, let zone, let parts), .quantity(let number, let unit)):
+            // `today + 2 weeks`. Days, weeks, months and years follow the calendar.
+            guard unit.dimension == .time, operation == .add || operation == .subtract else { return nil }
+            let amount = operation == .add ? number : -number
+            let components: [String: Calendar.Component] = ["day": .day, "week": .weekOfYear, "month": .month, "year": .year]
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = zone
+            if let component = components[unit.symbol], amount == amount.rounded(),
+               let moved = calendar.date(byAdding: component, value: Int(amount), to: date) {
+                return .date(moved, zone, parts)
+            }
+            let seconds = amount * unit.toBase
+            let isWholeDays = seconds.truncatingRemainder(dividingBy: 86400) == 0
+            return .date(date.addingTimeInterval(seconds), zone, parts == .date && !isWholeDays ? .dateAndTime : parts)
+        case (.quantity, .date):
+            return operation == .add ? other.applying(.add, self) : nil
+        case (.date, _), (_, .date), (.percent, .quantity):
             return nil
         case (_, .percent(let percent)):
             // 10 + 40% is 14. 10 - 40% is 6. 10 * 40% is 4. 10 / 40% is 25.

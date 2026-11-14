@@ -14,6 +14,13 @@ enum ResultFormatter {
             }
         case .percent(let percent):
             return decimalString(percent, decimalPlaces: context.decimalPlaces) + "%"
+        case .date(let date, let zone, let parts):
+            let style = Date.FormatStyle(locale: context.locale, timeZone: zone)
+            switch parts {
+            case .date: return date.formatted(style.weekday(.abbreviated).day().month(.abbreviated).year())
+            case .time: return date.formatted(style.hour().minute())
+            case .dateAndTime: return date.formatted(style.day().month(.abbreviated).year().hour().minute())
+            }
         case .quantity(let number, let unit) where unit.dimension == .currency:
             // Money always has two decimal places: $1,234.50, 1,234.50 CAD.
             let amount = abs(number).formatted(
