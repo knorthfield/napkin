@@ -47,6 +47,11 @@ extension Value {
         case (.percent(let left), .number(let right, _)):
             guard operation == .multiply || operation == .divide else { return nil }
             return .percent(Self.calculate(operation, left, right)!)
+        case (.quantity(let left, let leftUnit), .quantity(let right, let unit))
+            where (leftUnit.dimension == .currency) != (unit.dimension == .currency):
+            // `7 days * $60` is $420 and `$90 / 3 hours` is $30: the other measurement is only a count.
+            guard operation == .multiply || operation == .divide && leftUnit.dimension == .currency else { return nil }
+            return .quantity(Self.calculate(operation, left, right)!, leftUnit.dimension == .currency ? leftUnit : unit)
         case (.quantity(_, let leftUnit), .quantity(let right, let unit)):
             // The result has the unit on the right: 1 km + 5 m is 1005 m.
             guard case .quantity(let left, _) = converted(to: unit) else { return nil }

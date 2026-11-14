@@ -79,7 +79,7 @@ struct UnitTests {
         #expect(result(text) == expected)
     }
 
-    @Test(arguments: ["5 km + 3 kg", "5 km in kg", "2 ^ 3 km", "10 / 2 km", "5% in km"])
+    @Test(arguments: ["5 km + 3 kg", "3 hours / $90", "$5 + 3 km", "5 km in kg", "2 ^ 3 km", "10 / 2 km", "5% in km"])
     func measurementsThatDoNotGoTogether(text: String) {
         #expect(result(text) == nil)
     }

@@ -35,7 +35,7 @@ struct EditorLayoutTests {
     }
 
     @Test func syntaxColoursAndHeadingFonts() throws {
-        let editor = editor(text: "# Budget\nrent = 2 km + sqrt 4 \"note\"\nnext")
+        let editor = editor(text: "# Budget\nrent = 2 km + sqrt 4 \"note\"\nCost: 5\nturn on the light")
         let storage = try #require(editor.textView.textStorage)
         func color(at text: String) -> NSColor? {
             storage.attribute(.foregroundColor, at: (storage.string as NSString).range(of: text).location, effectiveRange: nil) as? NSColor
@@ -52,9 +52,11 @@ struct EditorLayoutTests {
         #expect(color(at: "+") == .systemOrange)
         #expect(color(at: "sqrt") == .systemBlue)
         #expect(color(at: "\"note\"") == .secondaryLabelColor)
-        #expect(color(at: "next") == .labelColor)
+        #expect(color(at: "#") == .tertiaryLabelColor)
+        #expect(color(at: "Cost:") == .secondaryLabelColor)
+        #expect(color(at: "on the") == .labelColor)
         #expect(editor.textView.textLayoutManager != nil)
-        #expect(rows(of: editor).map(\.text) == ["4 km"])
+        #expect(rows(of: editor).map(\.text) == ["4 km", "5"])
     }
 
     @Test func theResultAtTheCaretIsTheResultOfItsLine() {

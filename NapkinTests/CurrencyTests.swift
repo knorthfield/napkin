@@ -14,7 +14,8 @@ struct CurrencyTests {
         ("$50 as a % of $100", "50%"), ("5% of what is 6 EUR", "€120.00"),
         ("$20 in euro - 5% discount", "€15.20"), ("Price: $11 + $34.45", "$45.45"),
         ("$275 for the \"Model 227\"", "$275.00"), ("v = $20\nv times 7", "$140.00"), ("v = $20\nv + $10", "$30.00"),
-        ("$10\n£8\nsum", "£14.40"), ("$10 / 4", "$2.50"), ("$10 + 5", "$15.00"),
+        ("$10\n£8\nsum", "£14.40"), ("$10 / 4", "$2.50"), ("7 days * $60", "$420.00"), ("$60 * 7 days", "$420.00"),
+        ("$90 / 3 hours", "$30.00"), ("$10 + 5", "$15.00"),
     ])
     func money(text: String, expected: String) {
         #expect(result(text, context: context) == expected)

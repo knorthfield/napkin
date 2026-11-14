@@ -42,12 +42,15 @@ enum Calculator {
             if isInsideCodeBlock { return result }
             guard let expression = MarkdownLine.expression(in: line) else {
                 result.headingLevel = MarkdownLine.headingLevel(of: line)
+                if result.headingLevel != nil, let marksEnd = line.firstIndex(where: { $0 != "#" && !$0.isWhitespace }) {
+                    result.spans = [.init(range: line.startIndex..<marksEnd, role: .mark)]
+                }
                 if line.drop(while: \.isWhitespace).hasPrefix("//") { result.spans = [.init(range: result.range, role: .comment)] }
                 return result
             }
             // The list marker and the label.
             if expression.startIndex > line.startIndex {
-                result.spans.append(.init(range: line.startIndex..<expression.startIndex, role: .mark))
+                result.spans.append(.init(range: line.startIndex..<expression.startIndex, role: .comment))
             }
 
             var tokens = Lexer.tokens(of: expression)
@@ -55,15 +58,17 @@ enum Calculator {
             if tokens.count > 2, case .word(let name) = tokens[0].kind, tokens[1].kind == .symbol("="),
                !LineEvaluator.isReserved(name) {
                 assignedName = name
-                result.spans.append(.init(range: tokens[0].range, role: .variable))
-                result.spans.append(.init(range: tokens[1].range, role: .keyword))
-                tokens.removeFirst(2)
             }
-            var evaluator = LineEvaluator(tokens: tokens, state: state, context: context)
-            for (token, role) in zip(tokens, evaluator.roles) {
-                if let role { result.spans.append(.init(range: token.range, role: role)) }
+            var evaluator = LineEvaluator(tokens: Array(tokens.dropFirst(assignedName == nil ? 0 : 2)), state: state, context: context)
+            let value = evaluator.evaluate()
+            // A line with no result is a sentence: only its comments and Markdown marks get a colour.
+            let roles = (assignedName == nil ? [] : [.variable, .keyword]) + evaluator.roles
+            for (token, role) in zip(tokens, roles) {
+                if let role, value != nil || role == .comment || role == .mark {
+                    result.spans.append(.init(range: token.range, role: role))
+                }
             }
-            guard let value = evaluator.evaluate() else { return result }
+            guard let value else { return result }
             if let assignedName { state.variables[assignedName] = value }
             state.previous = value
             // A total is not a part of the next total.
