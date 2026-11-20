@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let rates = CurrencyRates()
     private(set) var store: NoteStore?
     private var window: MainWindow?
+    private let updateRelauncher = UpdateRelauncher()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The unit tests run inside the app: do not show the window.
@@ -37,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.store = store
         self.window = window
         Task { await rates.refreshIfOld() }
+        updateRelauncher.start()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
