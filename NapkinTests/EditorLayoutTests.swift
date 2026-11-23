@@ -68,4 +68,9 @@ struct EditorLayoutTests {
         editor.textView.setSelectedRange(NSRange(location: 14, length: 0))
         #expect(editor.resultAtCaret == nil)
     }
+
+    @Test func thePrintedNoteHasEachResultAfterItsLineAndTheTotalAtTheEnd() {
+        let page = editor(text: "1 + 1\ntext\n2 * 3").printView(for: NSPrintInfo())
+        #expect(page.string == "1 + 1\t2\ntext\n2 * 3\t6\n\nTotal\t8")
+    }
 }

@@ -30,6 +30,8 @@ total                              $1,790.00
   `Label:` before a calculation, `"quoted text"` and `// comment` lines are not calculated.
 
 Click a result to copy it. **Edit › Copy Result** (⇧⌘C) copies the result of the line with the caret.
+**File › Print…** (⌘P) prints the note with its results and total. To save a PDF, use **PDF › Save as PDF**
+in the print panel.
 
 Napkin calculates on your Mac. The only network request gets the exchange rates from
 [frankfurter.dev](https://frankfurter.dev).

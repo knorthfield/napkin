@@ -13,6 +13,11 @@ struct NapkinApp: App {
                 Button("New Note") { appDelegate.store?.addNote() }
                     .keyboardShortcut("n")
             }
+            CommandGroup(replacing: .printItem) {
+                // The print panel has Save as PDF.
+                Button("Print…") { NSApp.sendAction(#selector(EditorView.printNote(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("p")
+            }
             CommandGroup(after: .pasteboard) {
                 // The editor with the caret gets the command.
                 Button("Copy Result") { NSApp.sendAction(#selector(EditorView.copyResult(_:)), to: nil, from: nil) }

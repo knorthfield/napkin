@@ -6,6 +6,8 @@ final class EditorView: NSView, NSTextViewDelegate {
     static let font = NSFont.monospacedDigitSystemFont(ofSize: 15, weight: .regular)
 
     var onTextChange: (String) -> Void = { _ in }
+    /// The name of a printed or saved PDF.
+    var title = ""
 
     let textView: NSTextView
     private let scrollView: NSScrollView
@@ -120,6 +122,50 @@ final class EditorView: NSView, NSTextViewDelegate {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(result, forType: .string)
         }
+    }
+
+    /// The Print command. The print panel can also save the note as a PDF.
+    @objc func printNote(_ sender: Any?) {
+        let printInfo = NSPrintInfo.shared.copy() as! NSPrintInfo
+        printInfo.horizontalPagination = .fit
+        printInfo.isVerticallyCentered = false
+        let operation = NSPrintOperation(view: printView(for: printInfo), printInfo: printInfo)
+        operation.jobTitle = title
+        if let window { operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil) } else { operation.run() }
+    }
+
+    /// The note for the page: each result at the right of its line, and the total at the end.
+    func printView(for printInfo: NSPrintInfo) -> NSTextView {
+        let width = printInfo.paperSize.width - printInfo.leftMargin - printInfo.rightMargin
+        let style = NSMutableParagraphStyle()
+        style.tabStops = [NSTextTab(textAlignment: .right, location: width)]
+        let resultAttributes: [NSAttributedString.Key: Any] = [.font: Self.font, .foregroundColor: NSColor.controlAccentColor]
+        let page = NSMutableAttributedString()
+        let note = textView.textStorage ?? NSTextStorage()
+        var offset = 0
+        for (number, line) in textView.string.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+            let length = line.utf16.count
+            page.append(note.attributedSubstring(from: NSRange(location: offset, length: length)))
+            if results.indices.contains(number), let display = results[number].display {
+                page.append(NSAttributedString(string: "\t" + display, attributes: resultAttributes))
+            }
+            page.append(NSAttributedString(string: "\n", attributes: [.font: Self.font]))
+            offset += length + 1
+        }
+        if let total = totalFooter.total {
+            page.append(NSAttributedString(string: "\nTotal", attributes: [.font: Self.font, .foregroundColor: NSColor.secondaryLabelColor]))
+            page.append(NSAttributedString(string: "\t" + total, attributes: resultAttributes))
+        }
+        page.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: page.length))
+
+        let view = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 1))
+        view.appearance = NSAppearance(named: .aqua)
+        view.textContainerInset = .zero
+        view.textContainer?.lineFragmentPadding = 0
+        view.isVerticallyResizable = true
+        view.textStorage?.setAttributedString(page)
+        view.sizeToFit()
+        return view
     }
 
     @objc private func placeResults() {

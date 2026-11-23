@@ -12,7 +12,8 @@ struct ContentView: View {
             if let note = store.selectedNote {
                 let context = EvaluationContext(decimalPlaces: decimalPlaces, rates: rates.perEuro)
                 let results = Calculator.evaluate(note.text, context: context)
-                NoteEditor(text: note.text, results: results, total: Calculator.total(of: results, context: context)) { text in
+                NoteEditor(title: note.title, text: note.text, results: results,
+                           total: Calculator.total(of: results, context: context)) { text in
                     store.setText(text, of: note.url)
                 }
                 // A different note is a different editor, with its own caret and undo history.
