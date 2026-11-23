@@ -13,6 +13,8 @@ struct LineResult: Equatable, Sendable {
     /// 1 to 6 for a Markdown heading.
     var headingLevel: Int?
     var spans: [Span] = []
+    /// The value that the total of the note adds, or nil. A line that uses `sum` or `total` adds nothing.
+    var valueForTotal: Value?
 }
 
 /// What the lines above give to a line.
@@ -72,9 +74,21 @@ enum Calculator {
             if let assignedName { state.variables[assignedName] = value }
             state.previous = value
             // A total is not a part of the next total.
-            if !evaluator.usesBlock { state.block.append(value) }
+            if !evaluator.usesBlock {
+                state.block.append(value)
+                result.valueForTotal = value
+            }
             result.display = ResultFormatter.string(for: value, context: context)
             return result
         }
+    }
+
+    /// The sum of all the results of a note, or nil if it has none. A result that cannot be added is skipped.
+    static func total(of results: [LineResult], context: EvaluationContext = EvaluationContext()) -> String? {
+        var sum: Value?
+        for value in results.compactMap(\.valueForTotal) {
+            sum = sum.map { $0.applying(.add, value) ?? $0 } ?? value
+        }
+        return sum.map { ResultFormatter.string(for: $0, context: context) }
     }
 }

@@ -7,7 +7,9 @@ struct EditorLayoutTests {
     private func editor(text: String) -> EditorView {
         let editor = EditorView(frame: NSRect(x: 0, y: 0, width: 400, height: 600))
         editor.layoutSubtreeIfNeeded()
-        editor.show(text: text, results: Calculator.evaluate(text))
+        let results = Calculator.evaluate(text)
+        editor.show(text: text, results: results, total: Calculator.total(of: results))
+        editor.layoutSubtreeIfNeeded()
         return editor
     }
 

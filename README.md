@@ -23,7 +23,8 @@ total                              $1,790.00
   Central Bank.
 - **Dates and time zones.** `today + 3 weeks`, `time in Madrid`, `9:30 am New York in London`.
 - **Variables and totals.** `rate = 12.5`, then `40 * rate`. `prev` is the result above. `sum` and
-  `average` use the lines above, up to the first empty line.
+  `average` use the lines above, up to the first empty line. The footer shows the total of all the
+  results in the note.
 - **Markdown notes.** Each note is a Markdown file in `~/Documents/Napkin`, with exactly the text
   that you typed. Headings, quotes and code blocks are text. List items are calculated.
   `Label:` before a calculation, `"quoted text"` and `// comment` lines are not calculated.

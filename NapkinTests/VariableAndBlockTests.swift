@@ -33,4 +33,13 @@ struct VariableAndBlockTests {
     @Test func eachLineHasItsOwnResult() {
         #expect(Calculator.evaluate("1 + 1\n\nhello\n2 * 3").map(\.display) == ["2", nil, nil, "6"])
     }
+
+    @Test(arguments: [
+        ("6 x half bottles of champagne @ £12 each\n4 x full bottles @ £26 each\n3 x bottles Bollinger @ £45 each",
+         "£311.00"),
+        ("1\n2\n\n3\nsum", "6"), ("1\n2\ntotal", "3"), ("5\ntoday\n2", "7"), ("hello", nil), ("", nil),
+    ])
+    func totalOfTheNote(text: String, expected: String?) {
+        #expect(Calculator.total(of: Calculator.evaluate(text)) == expected)
+    }
 }

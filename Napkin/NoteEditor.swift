@@ -4,6 +4,7 @@ import SwiftUI
 struct NoteEditor: NSViewRepresentable {
     var text: String
     var results: [LineResult]
+    var total: String?
     var onTextChange: (String) -> Void
 
     func makeNSView(context: Context) -> EditorView {
@@ -12,6 +13,6 @@ struct NoteEditor: NSViewRepresentable {
 
     func updateNSView(_ view: EditorView, context: Context) {
         view.onTextChange = onTextChange
-        view.show(text: text, results: results)
+        view.show(text: text, results: results, total: total)
     }
 }

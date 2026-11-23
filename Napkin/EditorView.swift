@@ -10,6 +10,7 @@ final class EditorView: NSView, NSTextViewDelegate {
     let textView: NSTextView
     private let scrollView: NSScrollView
     private let resultsColumn = ResultsColumnView()
+    private let totalFooter = TotalFooterView()
     private var results: [LineResult] = []
     /// The line number for the UTF-16 offset at which each line starts.
     private var lineNumbers: [Int: Int] = [:]
@@ -38,6 +39,7 @@ final class EditorView: NSView, NSTextViewDelegate {
         scrollView.hasVerticalScroller = true
         addSubview(scrollView)
         addSubview(resultsColumn)
+        addSubview(totalFooter)
 
         // The results move with the text when it scrolls and when its lines wrap differently.
         scrollView.contentView.postsBoundsChangedNotifications = true
@@ -64,18 +66,26 @@ final class EditorView: NSView, NSTextViewDelegate {
     override func layout() {
         super.layout()
         let resultsWidth = min(max(bounds.width * 0.3, 120), 320)
-        scrollView.frame = NSRect(x: 0, y: 0, width: bounds.width - resultsWidth, height: bounds.height)
-        resultsColumn.frame = NSRect(x: bounds.width - resultsWidth, y: 0, width: resultsWidth, height: bounds.height)
+        let footerHeight = totalFooter.total == nil ? 0 : TotalFooterView.height
+        totalFooter.frame = NSRect(x: 0, y: 0, width: bounds.width, height: footerHeight)
+        let height = bounds.height - footerHeight
+        scrollView.frame = NSRect(x: 0, y: footerHeight, width: bounds.width - resultsWidth, height: height)
+        resultsColumn.frame = NSRect(x: bounds.width - resultsWidth, y: footerHeight, width: resultsWidth, height: height)
         placeResults()
     }
 
     /// Shows a note. The caret and the undo history stay when the text is already the same.
-    func show(text: String, results: [LineResult]) {
+    func show(text: String, results: [LineResult], total: String?) {
         if textView.string != text {
             textView.string = text
             textView.undoManager?.removeAllActions()
         }
         self.results = results
+        if total != totalFooter.total {
+            // The footer shows only when the note has a total.
+            if (total == nil) != (totalFooter.total == nil) { needsLayout = true }
+            totalFooter.total = total
+        }
         SyntaxHighlighter.apply(results, of: text, to: textView)
         lineNumbers = [:]
         var offset = 0
@@ -135,5 +145,50 @@ final class EditorView: NSView, NSTextViewDelegate {
             return true
         }
         resultsColumn.rows = rows
+    }
+}
+
+/// The sum of all the results of the note, at the bottom of the editor. A click copies it.
+private final class TotalFooterView: NSView {
+    static let height: CGFloat = 34
+
+    var total: String? {
+        didSet { needsDisplay = true }
+    }
+    private var isShowingCopied = false
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let total else { return }
+        NSColor.separatorColor.setFill()
+        NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
+        let textHeight = EditorView.font.boundingRectForFont.height
+        let textRect = NSRect(x: 19, y: (bounds.height - textHeight) / 2, width: bounds.width - 19 - 14, height: textHeight)
+        NSAttributedString(string: "Total", attributes: [
+            .font: EditorView.font, .foregroundColor: NSColor.secondaryLabelColor,
+        ]).draw(in: textRect)
+        let style = NSMutableParagraphStyle()
+        style.alignment = .right
+        NSAttributedString(string: isShowingCopied ? "Copied" : total, attributes: [
+            .font: EditorView.font,
+            .foregroundColor: isShowingCopied ? NSColor.secondaryLabelColor : NSColor.controlAccentColor,
+            .paragraphStyle: style,
+        ]).draw(in: textRect)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let total else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(total, forType: .string)
+        isShowingCopied = true
+        needsDisplay = true
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(0.8))
+            self?.isShowingCopied = false
+            self?.needsDisplay = true
+        }
+    }
+
+    override func resetCursorRects() {
+        if total != nil { addCursorRect(bounds, cursor: .pointingHand) }
     }
 }
