@@ -100,6 +100,12 @@ struct LineEvaluator {
             }
             // A note can use `x` as a variable. Then it is not the multiplication sign.
             if case .word(let word) = tokens[index].kind, state.variables[word] != nil { keyword = nil }
+            // `of`, `on` and `off` are percent words only after a percentage: `20% of 10`, but not
+            // `bottles of champagne`.
+            if case .percentPhrase(let phrase) = keyword, !Self.isAfterPercentage(items.last),
+               ![.asPercentOf, .asPercentOn, .asPercentOff].contains(phrase) {
+                keyword = nil
+            }
             var role: TokenRole?
             if let keyword {
                 items.append(keyword)
@@ -283,6 +289,13 @@ struct LineEvaluator {
         case .word(let word): word.lowercased()
         case .symbol(let symbol): symbol
         default: "\u{0}"
+        }
+    }
+
+    private static func isAfterPercentage(_ item: Item?) -> Bool {
+        switch item {
+        case .percentSign, .value(.percent): true
+        default: false
         }
     }
 

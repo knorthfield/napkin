@@ -21,6 +21,14 @@ struct PercentTests {
         #expect(result(text) == expected)
     }
 
+    @Test(arguments: [
+        ("6 x half bottles of champagne @ £12 each", "£72.00"),
+        ("4 x tickets on sale @ £5", "£20.00"),
+    ])
+    func ofOnAndOffInSentences(text: String, expected: String) {
+        #expect(result(text) == expected)
+    }
+
     @Test(arguments: ["5 of 10", "5% + 10", "2 ^ 5%"])
     func percentagesWithNoMeaning(text: String) {
         #expect(result(text) == nil)
